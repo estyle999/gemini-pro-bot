@@ -35,12 +35,12 @@ NUMEROLOGIST_PROMPT = """Ты — Румия, всемирно известны�
 7. Личная консультация: Если клиент хочет большего, чем твои ответы, или личную консультацию, вежливо предложи написать менеджеру для записи на консультацию. Все цены и время клиент может уточнить у менеджера."""
 
 model = genai.GenerativeModel(
-    "gemini-pro", 
+    "gemini-1.5-flash", 
     safety_settings=SAFETY_SETTINGS,
     system_instruction=NUMEROLOGIST_PROMPT
 )
 
 img_model = genai.GenerativeModel(
-    "gemini-pro-vision", 
+    "gemini-1.5-flash", 
     safety_settings=SAFETY_SETTINGS
 )
