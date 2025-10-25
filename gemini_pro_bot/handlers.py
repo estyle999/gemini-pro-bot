@@ -15,6 +15,7 @@ from gemini_pro_bot.html_format import format_message
 import PIL.Image as load_image
 from io import BytesIO
 import telegram
+from bs4 import BeautifulSoup   # Новый импорт
 
 # --- Функции для разбивки и очистки текста ---
 
@@ -36,11 +37,16 @@ def split_message(text, max_length=4000):
         parts.append(text)
     return parts
 
-def sanitize_html(message: str) -> str:
-    # Удалить незакрытые/перепутанные теги
-    message = re.sub(r'<[^>]+$', '', message)
-    message = re.sub(r'</[biu]>', '', message)
-    return message
+def sanitize_html(html: str) -> str:
+    # Оставляет только корректные поддерживаемые теги Telegram
+    allowed = {"b", "i", "u", "s", "a", "code", "pre"}
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.find_all(True):
+        if tag.name not in allowed:
+            tag.unwrap()
+        else:
+            tag.attrs = {k: v for k, v in tag.attrs.items() if k == "href"}
+    return str(soup)
 
 async def safe_send(send_method, *args, **kwargs):
     try:
