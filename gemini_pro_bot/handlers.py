@@ -112,62 +112,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     full_plain_message = ""
+    # Копим chunks без отправки!
     async for chunk in response:
         try:
             if chunk.text:
                 full_plain_message += chunk.text
-                message = format_message(full_plain_message)
-                message = sanitize_html(message)
-
-                # Разбиваем и шлём по частям (длина и HTML под контролем)
-                parts = split_message(message)
-                for i, part in enumerate(parts):
-                    if len(part.strip()) == 0:
-                        continue
-                    if i == 0:
-                        await safe_send(
-                            init_msg.edit_text,
-                            text=part,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=True,
-                        )
-                    else:
-                        await safe_send(
-                            update.message.reply_text,
-                            text=part,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=True,
-                        )
-        except StopCandidateException as sce:
-            await safe_send(init_msg.edit_text, "The model unexpectedly stopped generating.")
-            chat.rewind()
-            continue
-        except BadRequest:
-            await response.resolve()
-            continue
-        except NetworkError:
-            raise NetworkError(
-                "Looks like you're network is down. Please try again later."
-            )
-        except IndexError:
-            await safe_send(
-                init_msg.reply_text,
-                "Some index error occurred. This response is not supported."
-            )
-            await response.resolve()
-            continue
         except Exception as e:
             print(e)
-            if chunk.text:
-                msg = sanitize_html(format_message(chunk.text))
+            continue
+        await asyncio.sleep(0.1)
+
+    # Только теперь отправка: разбиваем и шлём по частям
+    if full_plain_message:
+        message = format_message(full_plain_message)
+        message = sanitize_html(message)
+        parts = split_message(message)
+        if parts:
+            await safe_send(
+                init_msg.edit_text,
+                text=parts[0],
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            for part in parts[1:]:
                 await safe_send(
                     update.message.reply_text,
-                    text=msg,
+                    text=part,
                     parse_mode=ParseMode.HTML,
-                    reply_to_message_id=init_msg.message_id,
                     disable_web_page_preview=True,
                 )
-        await asyncio.sleep(0.1)
 
 async def handle_image(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     init_msg = await safe_send(
@@ -192,51 +165,26 @@ async def handle_image(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             if chunk.text:
                 full_plain_message += chunk.text
-                message = format_message(full_plain_message)
-                message = sanitize_html(message)
-                parts = split_message(message)
-                for i, part in enumerate(parts):
-                    if len(part.strip()) == 0:
-                        continue
-                    if i == 0:
-                        await safe_send(
-                            init_msg.edit_text,
-                            text=part,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=True,
-                        )
-                    else:
-                        await safe_send(
-                            update.message.reply_text,
-                            text=part,
-                            parse_mode=ParseMode.HTML,
-                            disable_web_page_preview=True,
-                        )
-        except StopCandidateException:
-            await safe_send(init_msg.edit_text, "The model unexpectedly stopped generating.")
-        except BadRequest:
-            await response.resolve()
-            continue
-        except NetworkError:
-            raise NetworkError(
-                "Looks like you're network is down. Please try again later."
-            )
-        except IndexError:
-            await safe_send(
-                init_msg.reply_text,
-                "Some index error occurred. This response is not supported."
-            )
-            await response.resolve()
-            continue
         except Exception as e:
             print(e)
-            if chunk.text:
-                msg = sanitize_html(format_message(chunk.text))
+            continue
+        await asyncio.sleep(0.1)
+
+    if full_plain_message:
+        message = format_message(full_plain_message)
+        message = sanitize_html(message)
+        parts = split_message(message)
+        if parts:
+            await safe_send(
+                init_msg.edit_text,
+                text=parts[0],
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            for part in parts[1:]:
                 await safe_send(
                     update.message.reply_text,
-                    text=msg,
+                    text=part,
                     parse_mode=ParseMode.HTML,
-                    reply_to_message_id=init_msg.message_id,
                     disable_web_page_preview=True,
                 )
-        await asyncio.sleep(0.1)
