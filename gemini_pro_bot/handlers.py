@@ -1,4 +1,5 @@
 import asyncio
+import re
 from gemini_pro_bot.llm import model, img_model
 from google.generativeai.types.generation_types import (
     StopCandidateException,
@@ -15,7 +16,32 @@ import PIL.Image as load_image
 from io import BytesIO
 import telegram
 
-# ----------- ДОБАВЛЕНА Безопасная отправка -----------
+# --- Функции для разбивки и очистки текста ---
+
+def split_message(text, max_length=4000):
+    """Разбивает длинное сообщение на части по max_length символов."""
+    parts = []
+    while len(text) > max_length:
+        split_pos = text.rfind('\n', 0, max_length)
+        if split_pos == -1:
+            split_pos = text.rfind('. ', 0, max_length)
+            if split_pos != -1:
+                split_pos += 2
+        if split_pos == -1:
+            split_pos = max_length
+        part = text[:split_pos]
+        text = text[split_pos:]
+        parts.append(part)
+    if text:
+        parts.append(text)
+    return parts
+
+def sanitize_html(message: str) -> str:
+    # Удалить незакрытые/перепутанные теги
+    message = re.sub(r'<[^>]+$', '', message)
+    message = re.sub(r'</[biu]>', '', message)
+    return message
+
 async def safe_send(send_method, *args, **kwargs):
     try:
         return await send_method(*args, **kwargs)
@@ -70,9 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat = context.chat_data.get("chat")
     response = None
     try:
-        response = await chat.send_message_async(
-            text, stream=True
-        )
+        response = await chat.send_message_async(text, stream=True)
     except StopCandidateException as sce:
         print("Prompt: ", text, " was stopped. User: ", update.message.from_user)
         print(sce)
@@ -86,18 +110,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if response:
             await response.resolve()
         return
+
     full_plain_message = ""
     async for chunk in response:
         try:
             if chunk.text:
                 full_plain_message += chunk.text
                 message = format_message(full_plain_message)
-                await safe_send(
-                    init_msg.edit_text,
-                    text=message,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True,
-                )
+                message = sanitize_html(message)
+
+                # Разбиваем и шлём по частям (длина и HTML под контролем)
+                parts = split_message(message)
+                for i, part in enumerate(parts):
+                    if len(part.strip()) == 0:
+                        continue
+                    if i == 0:
+                        await safe_send(
+                            init_msg.edit_text,
+                            text=part,
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=True,
+                        )
+                    else:
+                        await safe_send(
+                            update.message.reply_text,
+                            text=part,
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=True,
+                        )
         except StopCandidateException as sce:
             await safe_send(init_msg.edit_text, "The model unexpectedly stopped generating.")
             chat.rewind()
@@ -119,11 +159,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except Exception as e:
             print(e)
             if chunk.text:
-                full_plain_message = chunk.text
-                message = format_message(full_plain_message)
+                msg = sanitize_html(format_message(chunk.text))
                 await safe_send(
                     update.message.reply_text,
-                    text=message,
+                    text=msg,
                     parse_mode=ParseMode.HTML,
                     reply_to_message_id=init_msg.message_id,
                     disable_web_page_preview=True,
@@ -154,12 +193,25 @@ async def handle_image(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
             if chunk.text:
                 full_plain_message += chunk.text
                 message = format_message(full_plain_message)
-                await safe_send(
-                    init_msg.edit_text,
-                    text=message,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True,
-                )
+                message = sanitize_html(message)
+                parts = split_message(message)
+                for i, part in enumerate(parts):
+                    if len(part.strip()) == 0:
+                        continue
+                    if i == 0:
+                        await safe_send(
+                            init_msg.edit_text,
+                            text=part,
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=True,
+                        )
+                    else:
+                        await safe_send(
+                            update.message.reply_text,
+                            text=part,
+                            parse_mode=ParseMode.HTML,
+                            disable_web_page_preview=True,
+                        )
         except StopCandidateException:
             await safe_send(init_msg.edit_text, "The model unexpectedly stopped generating.")
         except BadRequest:
@@ -179,11 +231,10 @@ async def handle_image(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception as e:
             print(e)
             if chunk.text:
-                full_plain_message = chunk.text
-                message = format_message(full_plain_message)
+                msg = sanitize_html(format_message(chunk.text))
                 await safe_send(
                     update.message.reply_text,
-                    text=message,
+                    text=msg,
                     parse_mode=ParseMode.HTML,
                     reply_to_message_id=init_msg.message_id,
                     disable_web_page_preview=True,
